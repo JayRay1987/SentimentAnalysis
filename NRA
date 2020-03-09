@@ -1,0 +1,49 @@
+import time
+import tweepy
+import re
+import csv
+
+# add your data from your twitter developer account
+CONSUMER_KEY = 'GNOBbO79tzwlFWyMKQgRb7QL5'
+
+CONSUMER_SECRET = 'Ps7sSuPNDDJ3K3aC2ibxEhv9n6raMdiudRYL6FgQpHtyjWtIPf'
+
+ACCESS_TOKEN = '1068577845574868992-h3nPn7CUcD5fn885gOfeqx5eBf7PuF'
+
+ACCESS_TOKEN_SECRET = 'sMMWTREjS0M3CNQdBPDXQ7hjz5as0yXdmg2psmZwTofmT'
+
+# access the api
+auth = tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
+auth.set_access_token(ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+api = tweepy.API(auth)
+
+
+def get_tweets(query, limit, file):
+    count = 0
+    target_file = open(file, 'a', encoding='utf-8', newline='')
+    csv_file = csv.writer(target_file, delimiter=',', quotechar='"')
+
+#RT removes retweets
+    for tweet in tweepy.Cursor(api.search, q=query + ' -RT', count=280, include_entities=True, lang="en").items():
+        count = count + 1
+        tweet_content = re.sub("[^A-Za-z0-9.:,'/?!#@$]", " ", tweet.text)
+        tweet_content1 = re.sub(r"http\S+", " ", tweet_content)
+        hashtags = re.findall(r"#(\w+)", tweet.text)
+        print(count, tweet.created_at, tweet_content1, hashtags)
+        print("===============================================")
+
+        csv_file.writerow([count, tweet.id_str, tweet.created_at, tweet_content1, hashtags])
+
+        if (count > limit): return 0  # limit of tweets reached
+
+        if (count % 99 == 0):  # every 20 tweets save the file and wait 8 seconds
+            target_file.flush()
+            time.sleep(4)
+
+    target_file.close()
+    return 0
+
+
+# get tweets is a function to get tweets and save
+# into the specific csv file. Put your csv file and query keywords!
+get_tweets(query="NRA", limit=100000, file="C:\\Users\\Julians Laptop\\Desktop\\nra.csv")
