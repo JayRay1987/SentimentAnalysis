@@ -1,0 +1,130 @@
+#Install Packages
+install.packages("RODBC")
+install.packages("twitteR", repos = "http://cran.us.r-project.org")
+install.packages("RCurl", repos = "http://cran.us.r-project.org")
+install.packages("httr", repos = "http://cran.us.r-project.org")
+install.packages("syuzhet", repos = "http://cran.us.r-project.org")
+install.packages("plotly")
+install.packages("tm",dependencies=TRUE)
+install.packages("corpus")
+install.packages("tmap")
+install.packages("wordcloud")
+
+#Load packages
+library(RODBC)
+library(twitteR)
+library(RCurl)
+library(httr)
+library(tm)
+library(tmap)
+library(wordcloud)
+library(syuzhet)
+library(corpus)
+library(plotly)
+
+#Connect to database
+con <- odbcConnect("CrimeDB")
+
+#run a query
+sqlQuery(con, "SELECT DISTINCT in_city FROM citydim")
+
+#connect to the twitter_table select for date: 31-08-2019 (Day of Odessa Mass Shooting)
+tweets <- sqlQuery(con, "SELECT * FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-08-31'")
+tweets <- sqlQuery(con, "SELECT * FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-08-30'")
+tweets <- sqlQuery(con, "SELECT * FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-09-01'")
+tweets <- sqlQuery(con, "SELECT * FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-09-02'")
+
+#connect to the twitter_table select for date: 31-08-2019 (Day of Odessa Mass Shooting)
+tweets <- sqlQuery(con, "SELECT * FROM twitter_table WHERE tw_date = '2019-08-30'")
+tweets <- sqlQuery(con, "SELECT * FROM twitter_table WHERE tw_date = '2019-08-31'")
+tweets <- sqlQuery(con, "SELECT * FROM twitter_table WHERE tw_date = '2019-09-01'")
+tweets <- sqlQuery(con, "SELECT * FROM twitter_table WHERE tw_date = '2019-09-02'")
+
+#Count number of rows
+sqlQuery(con, "SELECT COUNT(*) FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-08-30'")
+sqlQuery(con, "SELECT COUNT(*) FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-08-31'")
+sqlQuery(con, "SELECT COUNT(*) FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-09-01'")
+sqlQuery(con, "SELECT COUNT(*) FROM tweetFactTable INNER JOIN DateDim ON dateid = date_sk WHERE DateDim.fulldate = '2019-09-02'")
+
+#Count number of rows
+sqlQuery(con, "SELECT COUNT(*) FROM twitter_table WHERE tw_date = '2019-09-01'")
+sqlQuery(con, "SELECT COUNT(*) FROM twitter_table WHERE tw_date = '2019-08-31'")
+sqlQuery(con, "SELECT COUNT(*) FROM twitter_table WHERE tw_date = '2019-08-30'")
+sqlQuery(con, "SELECT COUNT(*) FROM twitter_table WHERE tw_date = '2019-09-02'")
+
+# authorisation keys
+consumer_key = "GNOBbO79tzwlFWyMKQgRb7QL5" #Consumer key from twitter app
+consumer_secret = "Ps7sSuPNDDJ3K3aC2ibxEhv9n6raMdiudRYL6FgQpHtyjWtIPf" #Consumer secret from twitter app
+access_token = "1068577845574868992-h3nPn7CUcD5fn885gOfeqx5eBf7PuF" #access token from twitter app
+access_secret ="sMMWTREjS0M3CNQdBPDXQ7hjz5as0yXdmg2psmZwTofmT" #access secret from twitter app
+
+#Create a dataframe from the Tweets
+tweets.df <-as.data.frame(tweets)
+
+#View Tweets
+tweets.df$tw_text
+
+
+#clean the tweets
+tweets.df$tw_text= gsub("&amp", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("&amp", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("@\\w+", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("[[:punct:]]", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("[[:digit:]]", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("http\\w+", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("[ \t]{2,}", "", tweets.df$tw_text)
+tweets.df$tw_text = gsub("^\\s+|\\s+$", "", tweets.df$tw_text)
+
+tweets.df$tw_text <- iconv(tweets.df$tw_text, "UTF-8", "ASCII", sub="")
+
+# Emotions for each tweet using NRC dictionary
+emotions <- get_nrc_sentiment(tweets.df$tw_text)
+emo_bar = colSums(emotions)
+emo_sum = data.frame(count=emo_bar, emotion=names(emo_bar))
+emo_sum$emotion = factor(emo_sum$emotion, levels=emo_sum$emotion[order(emo_sum$count, decreasing = TRUE)])
+
+
+# Plot the emotions from NRC sentiments
+p <- plot_ly(emo_sum, x=~emotion, y=~count, type="bar", color=~emotion) %>%
+  layout(xaxis=list(title=""), showlegend=FALSE,
+         title="Emotion Type for mentions of NRA")
+#api_create(p, filename="Sentimentanalysis")
+#View plot
+p
+
+# Create comparison word cloud data
+wordcloud_tweet = c(
+  paste(tweets.df$tw_text[emotions$anger > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$anticipation > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$disgust > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$fear > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$joy > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$sadness > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$surprise > 0], collapse=" "),
+  paste(tweets.df$tw_text[emotions$trust > 0], collapse=" ")
+)
+
+
+# create corpus
+corpus = Corpus(VectorSource(wordcloud_tweet))
+
+# remove punctuation, convert every word to lower case and remove stop words
+corpus = tm_map(corpus, tolower)
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeWords, c(stopwords("english")))
+corpus = tm_map(corpus, stemDocument)
+
+# create document term matrix
+tdm = TermDocumentMatrix(corpus)
+
+# convert as matrix
+tdm = as.matrix(tdm)
+tdmnew <- tdm[nchar(rownames(tdm)) < 11,]
+
+# column name binding
+colnames(tdm) = c('anger', 'anticipation', 'disgust', 'fear', 'joy', 'sadness', 'surprise', 'trust')
+colnames(tdmnew) <- colnames(tdm)
+comparison.cloud(tdmnew, random.order=FALSE, 
+                 colors = c("#00B2FF", "red", "#FF0099", "#6600CC", "green", "orange", "blue", "brown"),
+                 title.size=1, max.words=250, scale=c(2.5, 0.4),rot.per=0.4)
